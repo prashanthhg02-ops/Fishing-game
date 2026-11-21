@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#082c43">
+  <title>Little Lake Fishing</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      background: #071e2b;
+      color: #f4f3df;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(ellipse at 50% 0%, #174e61 0, transparent 56%),
+        #071e2b;
+    }
+
+    .game {
+      width: min(100%, 1000px);
+      overflow: hidden;
+      border: 1px solid #5b8d89;
+      border-radius: 22px;
+      background: #0c3444;
+      box-shadow: 0 24px 80px #020d13a8;
+    }
+
+    .topbar {
+      min-height: 82px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 16px 24px;
+      background: linear-gradient(110deg, #123f4e, #0d3344);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon { font-size: 32px; filter: drop-shadow(0 3px 0 #09232c); }
+    h1 { margin: 0; font-size: clamp(18px, 3vw, 25px); letter-spacing: .3px; }
+    .subtitle { margin: 3px 0 0; color: #b6d2c7; font-size: 13px; }
+    .stats { display: flex; gap: 10px; }
+
+    .stat {
+      min-width: 90px;
+      padding: 9px 13px;
+      border: 1px solid #528174;
+      border-radius: 12px;
+      background: #0a2b3a;
+      text-align: center;
+    }
+
+    .stat-label { display: block; color: #a7c7b9; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    .stat-value { display: block; margin-top: 2px; color: #ffe49a; font-size: 20px; font-weight: 800; }
+
+    .scene { position: relative; background: #84b9b0; }
+    canvas { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; }
+
+    .message {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      max-width: calc(100% - 32px);
+      padding: 9px 16px;
+      border: 1px solid #ffffff72;
+      border-radius: 999px;
+      background: #082c43d9;
+      color: #fff7db;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: center;
+      transform: translateX(-50%);
+      pointer-events: none;
+      transition: opacity .25s;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 22px 19px;
+    }
+
+    .help { margin: 0; color: #c1d9ca; font-size: 13px; line-height: 1.5; }
+    .help strong { color: #ffe49a; }
+
+    button {
+      flex: 0 0 auto;
+      min-width: 150px;
+      padding: 12px 19px;
+      border: 0;
+      border-radius: 12px;
+      background: #f3c45f;
+      color: #263b32;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #bd8740;
+      transition: transform .12s, background .12s;
+    }
+
+    button:hover { background: #ffda7d; transform: translateY(-1px); }
+    button:active { transform: translateY(2px); box-shadow: 0 2px 0 #bd8740; }
+    button:focus-visible { outline: 3px solid white; outline-offset: 3px; }
+
+    @media (max-width: 560px) {
+      body { padding: 10px; }
+      .topbar { align-items: flex-start; padding: 14px; }
+      .brand-icon { font-size: 26px; }
+      .subtitle { max-width: 150px; }
+      .stats { gap: 6px; }
+      .stat { min-width: 61px; padding: 7px 8px; }
+      .stat-value { font-size: 17px; }
+      .controls { align-items: stretch; flex-direction: column; padding: 14px; }
+      button { width: 100%; }
+      .help { text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <main class="game" aria-label="Little Lake Fishing game">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">🎣</span>
+        <div>
+          <h1>Little Lake Fishing</h1>
+          <p class="subtitle">A peaceful little day on the water</p>
+        </div>
+      </div>
+      <div class="stats" aria-live="polite">
+        <div class="stat"><span class="stat-label">Catch</span><span class="stat-value" id="score">0</span></div>
+        <div class="stat"><span class="stat-label">Time</span><span class="stat-value" id="time">90</span></div>
+      </div>
+    </header>
+    <section class="scene" aria-label="Fishing pond">
+      <canvas id="pond" width="960" height="640" aria-label="Animated fishing pond. Use the controls below to fish."></canvas>
+      <div class="message" id="message">Press SPACE or CAST A LINE to get started!</div>
+    </section>
+    <footer class="controls">
+      <p class="help"><strong>SPACE</strong> cast / reel &nbsp;·&nbsp; <strong>← →</strong> move your line<br>Catch as many fish as you can before sunset!</p>
+      <button id="castButton" type="button">Cast a line</button>
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const canvas = document.querySelector("#pond");
+      const ctx = canvas.getContext("2d");
+      const scoreDisplay = document.querySelector("#score");
+      const timeDisplay = document.querySelector("#time");
+      const message = document.querySelector("#message");
+      const castButton = document.querySelector("#castButton");
+      const width = canvas.width;
+      const height = canvas.height;
+      const waterTop = 265;
+
+      const fishTypes = [
+        { name: "Minnow", color: "#f7d277", belly: "#fff1bd", points: 1, size: 25 },
+        { name: "Bluegill", color: "#73d0bc", belly: "#d4f0ba", points: 2, size: 34 },
+        { name: "Golden koi", color: "#f38d61", belly: "#ffe0a2", points: 3, size: 43 }
+      ];
+
+      const fish = Array.from({ length: 10 }, (_, index) => ({
+        x: 65 + Math.random() * (width - 130),
+        y: 350 + Math.random() * 235,
+        speed: (0.45 + Math.random() * 0.8) * (index % 2 ? 1 : -1),
+        type: fishTypes[Math.floor(Math.random() * fishTypes.length)],
+        phase: Math.random() * Math.PI * 2,
+        scale: 0.78 + Math.random() * 0.48
+      }));
+
+      const state = {
+        score: 0,
+        seconds: 90,
+        mode: "ready",
+        lineX: 480,
+        hookY: waterTop + 10,
+        caughtFish: null,
+        splash: 0,
+        lastTime: 0,
+        elapsed: 0
+      };
+
+      function roundedRect(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+      }
+
+      function drawBackground() {
+        const sky = ctx.createLinearGradient(0, 0, 0, waterTop);
+        sky.addColorStop(0, "#8bc8bd");
+        sky.addColorStop(1, "#d4d69e");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.fillStyle = "#f4d781";
+        ctx.beginPath();
+        ctx.arc(790, 105, 43, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff0bc";
+        ctx.beginPath();
+        ctx.arc(775, 91, 13, 0, Math.PI * 2);
+        ctx.fill();
+
+        drawCloud(165, 90, 1);
+        drawCloud(520, 145, .72);
+
+        ctx.fillStyle = "#719d78";
+        ctx.beginPath();
+        ctx.moveTo(0, 238);
+        ctx.quadraticCurveTo(150, 155, 315, 237);
+        ctx.quadraticCurveTo(485, 153, 640, 239);
+        ctx.quadraticCurveTo(812, 170, 960, 220);
+        ctx.lineTo(960, 285);
+        ctx.lineTo(0, 285);
+        ctx.fill();
+        ctx.fillStyle = "#527b64";
+        ctx.beginPath();
+        ctx.moveTo(0, 251);
+        ctx.quadraticCurveTo(190, 188, 360, 258);
+        ctx.quadraticCurveTo(570, 190, 735, 256);
+        ctx.quadraticCurveTo(850, 210, 960, 244);
+        ctx.lineTo(960, 285);
+        ctx.lineTo(0, 285);
+        ctx.fill();
+
+        drawTree(78, 195, .85);
+        drawTree(868, 187, 1.05);
+        drawTree(923, 220, .66);
+        drawDock();
+
+        const water = ctx.createLinearGradient(0, waterTop, 0, height);
+        water.addColorStop(0, "#388e96");
+        water.addColorStop(.52, "#247887");
+        water.addColorStop(1, "#15556b");
+        ctx.fillStyle = water;
+        ctx.fillRect(0, waterTop, width, height - waterTop);
+
+        ctx.strokeStyle = "#b4e1bc6e";
+        ctx.lineWidth = 3;
+        for (let row = 0; row < 7; row++) {
+          const y = waterTop + 22 + row * 49;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 8) {
+            const waveY = y + Math.sin(x * .018 + state.elapsed * 1.5 + row) * 4;
+            if (x === 0) ctx.moveTo(x, waveY);
+            else ctx.lineTo(x, waveY);
+          }
+          ctx.stroke();
+        }
+
+        drawReeds(20, 286, 1);
+        drawReeds(932, 286, .8);
+      }
+
+      function drawCloud(x, y, scale) {
+        ctx.fillStyle = "#f1f0d7b8";
+        ctx.beginPath();
+        ctx.arc(x, y, 22 * scale, 0, Math.PI * 2);
+        ctx.arc(x + 24 * scale, y - 10 * scale, 30 * scale, 0, Math.PI * 2);
+        ctx.arc(x + 54 * scale, y, 22 * scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function drawTree(x, y, scale) {
+        ctx.fillStyle = "#745c45";
+        ctx.fillRect(x - 7 * scale, y, 14 * scale, 58 * scale);
+        ctx.fillStyle = "#315f4c";
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.arc(x + (i - 1) * 19 * scale, y - i % 2 * 18 * scale, (27 - i * 2) * scale, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = "#477452";
+        ctx.beginPath();
+        ctx.arc(x - 13 * scale, y - 15 * scale, 15 * scale, 0, Math.PI * 2);
+        ctx.arc(x + 17 * scale, y - 18 * scale, 15 * scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function drawDock() {
+        ctx.fillStyle = "#8b6042";
+        ctx.fillRect(345, 248, 275, 17);
+        ctx.fillStyle = "#bd8851";
+        for (let x = 350; x < 620; x += 38) {
+          ctx.fillRect(x, 249, 30, 14);
+        }
+        ctx.fillStyle = "#684a38";
+        for (const x of [365, 590]) {
+          ctx.fillRect(x, 260, 10, 52);
+          ctx.fillRect(x + 26, 260, 8, 41);
+        }
+      }
+
+      function drawReeds(x, y, scale) {
+        ctx.strokeStyle = "#8ab774";
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 5; i++) {
+          const lean = (i - 2) * 8 * scale;
+          ctx.beginPath();
+          ctx.moveTo(x + i * 7 * scale, y);
+          ctx.quadraticCurveTo(x + i * 7 * scale + lean, y - 28 * scale, x + i * 7 * scale + lean, y - 55 * scale);
+          ctx.stroke();
+          ctx.fillStyle = "#806a47";
+          ctx.fillRect(x + i * 7 * scale + lean - 3, y - 57 * scale, 6, 13 * scale);
+        }
+      }
+
+      function drawBoat() {
+        const bob = Math.sin(state.elapsed * 2.4) * 2;
+        ctx.save();
+        ctx.translate(0, bob);
+        ctx.fillStyle = "#5b4639";
+        ctx.beginPath();
+        ctx.moveTo(393, 255);
+        ctx.lineTo(588, 255);
+        ctx.lineTo(560, 293);
+        ctx.quadraticCurveTo(490, 310, 420, 293);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#bd704d";
+        ctx.beginPath();
+        ctx.moveTo(405, 260);
+        ctx.lineTo(577, 260);
+        ctx.lineTo(553, 285);
+        ctx.quadraticCurveTo(491, 297, 430, 285);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#f2cb82";
+        ctx.beginPath();
+        ctx.ellipse(493, 253, 76, 11, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#e9ae77";
+        ctx.beginPath();
+        ctx.arc(489, 203, 17, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#455d4d";
+        ctx.beginPath();
+        ctx.arc(489, 198, 18, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#436957";
+        roundedRect(469, 219, 40, 35, 12);
+        ctx.fill();
+        ctx.fillStyle = "#e8d596";
+        ctx.fillRect(466, 239, 47, 8);
+
+        ctx.strokeStyle = "#614731";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(514, 227);
+        ctx.lineTo(state.lineX, 215);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawFish(item, isCaught) {
+        const { type } = item;
+        const size = type.size * item.scale;
+        const direction = item.speed >= 0 ? 1 : -1;
+        const wag = Math.sin(state.elapsed * 7 + item.phase) * size * .12;
+        ctx.save();
+        ctx.translate(item.x, item.y + wag);
+        ctx.scale(direction * item.scale, item.scale);
+        ctx.fillStyle = type.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, size * .62, size * .34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-size * .48, 0);
+        ctx.lineTo(-size * .91, -size * .31 + wag * .2);
+        ctx.lineTo(-size * .84, size * .29 + wag * .2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = type.belly;
+        ctx.beginPath();
+        ctx.ellipse(size * .07, size * .13, size * .37, size * .15, -.08, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff9dc";
+        ctx.beginPath();
+        ctx.arc(size * .35, -size * .08, size * .075, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#203d45";
+        ctx.beginPath();
+        ctx.arc(size * .37, -size * .08, size * .038, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff65";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-size * .15, -size * .22);
+        ctx.lineTo(-size * .05, size * .22);
+        ctx.stroke();
+        ctx.restore();
+        if (isCaught) {
+          ctx.fillStyle = "#fff3bf";
+          ctx.font = "bold 15px Trebuchet MS";
+          ctx.textAlign = "center";
+          ctx.fillText("+" + type.points, item.x, item.y - size * .65);
+        }
+      }
+
+      function drawLine() {
+        if (state.mode === "ready" || state.mode === "gameover") return;
+        const boatBob = Math.sin(state.elapsed * 2.4) * 2;
+        const originX = 514;
+        const originY = 227 + boatBob;
+        ctx.strokeStyle = "#f4e5bb";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(originX, originY);
+        ctx.lineTo(state.lineX, state.hookY);
+        ctx.stroke();
+
+        if (state.mode === "fishing" || state.mode === "caught") {
+          ctx.fillStyle = "#f3ce68";
+          ctx.beginPath();
+          ctx.ellipse(state.lineX, state.hookY, 8, 12, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#f9f0c4";
+          ctx.beginPath();
+          ctx.arc(state.lineX - 2, state.hookY - 5, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#f8f2d5";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(state.lineX, state.hookY + 9);
+          ctx.lineTo(state.lineX, state.hookY + 19);
+          ctx.quadraticCurveTo(state.lineX + 9, state.hookY + 22, state.lineX + 8, state.hookY + 14);
+          ctx.stroke();
+        }
+      }
+
+      function drawSparkles() {
+        if (state.splash <= 0) return;
+        ctx.strokeStyle = "#fff5c3";
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = Math.min(1, state.splash * 2);
+        for (let i = 0; i < 5; i++) {
+          const angle = i * Math.PI * 2 / 5;
+          const radius = (1 - state.splash) * 36 + 10;
+          const x = state.lineX + Math.cos(angle) * radius;
+          const y = state.hookY - 18 + Math.sin(angle) * radius;
+          ctx.beginPath();
+          ctx.moveTo(x - 4, y);
+          ctx.lineTo(x + 4, y);
+          ctx.moveTo(x, y - 4);
+          ctx.lineTo(x, y + 4);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function draw() {
+        drawBackground();
+        fish.forEach(item => {
+          if (item !== state.caughtFish) drawFish(item, false);
+        });
+        if (state.caughtFish) drawFish(state.caughtFish, true);
+        drawBoat();
+        drawLine();
+        drawSparkles();
+      }
+
+      function setMessage(text) {
+        message.textContent = text;
+      }
+
+      function cast() {
+        if (state.mode === "gameover") {
+          state.score = 0;
+          state.seconds = 90;
+          scoreDisplay.textContent = "0";
+          timeDisplay.textContent = "90";
+          state.mode = "ready";
+          state.caughtFish = null;
+          fish.forEach((item, index) => {
+            item.x = 65 + Math.random() * (width - 130);
+            item.y = 350 + Math.random() * 235;
+            item.type = fishTypes[Math.floor(Math.random() * fishTypes.length)];
+          });
+          setMessage("Press SPACE or CAST A LINE to get started!");
+          castButton.textContent = "Cast a line";
+          return;
+        }
+        if (state.mode === "ready") {
+          state.mode = "dropping";
+          state.lineX = 480;
+          state.hookY = waterTop + 4;
+          setMessage("The fish are biting... move your line to find one!");
+          castButton.textContent = "Reel in";
+        } else if (state.mode === "fishing") {
+          reelIn();
+        }
+      }
+
+      function reelIn() {
+        if (state.mode !== "fishing" && state.mode !== "caught") return;
+        if (!state.caughtFish) {
+          state.mode = "reeling";
+          setMessage("Reeling in... cast again when you're ready!");
+        } else {
+          state.mode = "reeling";
+          setMessage("Nice catch! Reel it in!");
+        }
+      }
+
+      function finishCatch() {
+        if (state.caughtFish) {
+          state.score += state.caughtFish.type.points;
+          scoreDisplay.textContent = String(state.score);
+          state.caughtFish.x = -100;
+          state.caughtFish = null;
+        }
+        state.mode = "ready";
+        state.hookY = waterTop + 4;
+        castButton.textContent = "Cast a line";
+        setMessage(state.score >= 15 ? "Amazing fishing! Keep it up!" : "Great catch! Ready for another?");
+      }
+
+      function update(delta) {
+        state.elapsed += delta;
+        if (state.mode !== "ready" && state.mode !== "gameover") {
+          state.seconds -= delta;
+          if (state.seconds <= 0) {
+            state.seconds = 0;
+            state.mode = "gameover";
+            state.caughtFish = null;
+            castButton.textContent = "Play again";
+            setMessage(`Sunset! You caught ${state.score} points. Press PLAY AGAIN to fish some more.`);
+          }
+          timeDisplay.textContent = String(Math.ceil(state.seconds));
+        }
+
+        fish.forEach(item => {
+          if (item === state.caughtFish) return;
+          item.x += item.speed * delta * 35;
+          if (item.x < 35 || item.x > width - 35) item.speed *= -1;
+          item.y += Math.sin(state.elapsed * 1.2 + item.phase) * delta * 5;
+          item.y = Math.max(330, Math.min(height - 35, item.y));
+        });
+
+        if (state.mode === "dropping") {
+          state.hookY += delta * 250;
+          if (state.hookY >= 575) {
+            state.hookY = 575;
+            state.mode = "fishing";
+            setMessage("Wait for a bite, or press SPACE to reel in.");
+          }
+        } else if (state.mode === "fishing") {
+          state.hookY = 565 + Math.sin(state.elapsed * 3) * 8;
+          const target = fish.find(item => Math.abs(item.x - state.lineX) < item.type.size * item.scale * .55 + 9 &&
+            Math.abs(item.y - state.hookY) < item.type.size * item.scale * .35 + 12);
+          if (target) {
+            state.caughtFish = target;
+            state.mode = "caught";
+            state.splash = 1;
+            setMessage(`${target.type.name}! Press SPACE to reel it in!`);
+          }
+        } else if (state.mode === "reeling") {
+          state.hookY -= delta * 310;
+          if (state.caughtFish) {
+            state.caughtFish.x += (state.lineX - state.caughtFish.x) * Math.min(1, delta * 5);
+            state.caughtFish.y += (state.hookY - state.caughtFish.y) * Math.min(1, delta * 5);
+          }
+          if (state.hookY <= waterTop + 5) finishCatch();
+        }
+        state.splash = Math.max(0, state.splash - delta * 1.6);
+      }
+
+      function frame(now) {
+        const delta = Math.min((now - (state.lastTime || now)) / 1000, .04);
+        state.lastTime = now;
+        update(delta);
+        draw();
+        requestAnimationFrame(frame);
+      }
+
+      function moveLine(direction) {
+        if (state.mode === "ready") {
+          state.lineX = Math.max(170, Math.min(790, state.lineX + direction * 34));
+          return;
+        }
+        if (state.mode === "fishing" || state.mode === "caught" || state.mode === "dropping") {
+          state.lineX = Math.max(45, Math.min(width - 45, state.lineX + direction * 34));
+        }
+      }
+
+      document.addEventListener("keydown", event => {
+        if (event.code === "Space") {
+          event.preventDefault();
+          if (!event.repeat) cast();
+        } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
+          event.preventDefault();
+          moveLine(-1);
+        } else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
+          event.preventDefault();
+          moveLine(1);
+        }
+      });
+
+      canvas.addEventListener("pointerdown", event => {
+        const bounds = canvas.getBoundingClientRect();
+        const pointerX = (event.clientX - bounds.left) / bounds.width * width;
+        if (state.mode === "ready") state.lineX = Math.max(170, Math.min(790, pointerX));
+        else if (state.mode === "fishing" || state.mode === "dropping") {
+          state.lineX = Math.max(45, Math.min(width - 45, pointerX));
+        }
+      });
+
+      castButton.addEventListener("click", cast);
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
